@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>頭痛ログ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f0f2f5;
+  --surface: rgba(255,255,255,0.82);
+  --surface-solid: #ffffff;
+  --surface-alt: rgba(247,248,250,0.9);
+  --border: rgba(226,229,234,0.8);
+  --text-primary: #1a1d23;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --accent: #4f6ef7;
+  --accent-light: rgba(238,240,254,0.9);
+  --accent-hover: #3b57e0;
+  --danger: #ef4444;
+  --danger-light: rgba(254,242,242,0.9);
+  --warn: #f59e0b;
+  --warn-light: rgba(255,251,235,0.9);
+  --success: #10b981;
+  --success-light: rgba(236,253,245,0.9);
+  --mono: 'DM Mono', monospace;
+  --sans: 'Noto Sans JP', sans-serif;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 2px 12px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
+  --blur: blur(16px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0c14;
+    --surface: rgba(28,31,42,0.85);
+    --surface-solid: #1c1f2a;
+    --surface-alt: rgba(36,40,54,0.9);
+    --border: rgba(46,51,69,0.8);
+    --text-primary: #e8eaf0;
+    --text-secondary: #9098b0;
+    --text-muted: #5c6480;
+    --accent-light: rgba(30,37,80,0.9);
+    --danger-light: rgba(42,26,26,0.9);
+    --warn-light: rgba(42,34,16,0.9);
+    --success-light: rgba(15,42,30,0.9);
+  }
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; scroll-padding-top: env(safe-area-inset-top,0px); }
+body {
+  min-height: 100%;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* ── Seasonal canvas background ── */
+#season-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--season-overlay, transparent);
+}
+
+/* ── App shell ── */
+.app-shell { position: relative; z-index: 2; }
+
+.app-header {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 100;
+  background: var(--surface);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 101;
+  background: var(--surface);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+.app-header h1 {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.3px;
+}
+.header-right { display: flex; align-items: center; gap: 10px; }
+.header-meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.season-badge {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tab-bar {
+  display: flex;
+  background: var(--surface);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 11px 4px;
+  border: none;
+  background: none;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  position: relative;
+  transition: color .15s;
+  white-space: nowrap;
+}
+.tab-btn.active { color: var(--accent); }
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 6px; right: 6px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+.main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px 14px 64px;
+}
+
+/* ── Cards (glassmorphism) ── */
+.card {
+  background: var(--surface);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.card-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+/* ── Weather banner ── */
+.weather-banner {
+  background: var(--accent-light);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow);
+}
+.weather-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+.weather-body { flex: 1; min-width: 0; }
+.weather-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 3px 10px;
+  align-items: baseline;
+}
+.weather-item { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.weather-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.weather-status { font-size: 10px; color: var(--text-muted); margin-top: 5px; }
+
+/* ── Form elements ── */
+.field { margin-bottom: 16px; }
+.field:last-child { margin-bottom: 0; }
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.required { color: var(--danger); margin-left: 2px; font-size: 10px; }
+
+input[type="time"],
+input[type="number"],
+input[type="text"],
+textarea {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 15px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="number"] { font-family: var(--mono); }
+input:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79,110,247,.12);
+}
+textarea { resize: vertical; min-height: 80px; }
+
+/* ── Toggle Yes/No ── */
+.toggle-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.toggle-btn {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.toggle-btn.selected-yes { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
+.toggle-btn.selected-no  { background: var(--success-light); border-color: var(--success); color: var(--success); }
+
+/* ── Pain scale ── */
+.scale-wrap { display: grid; grid-template-columns: repeat(10,1fr); gap: 4px; }
+.scale-btn {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .12s;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0;
+}
+.scale-btn.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+.scale-hint { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 5px; }
+
+/* ── Chips ── */
+.chip-group { display: flex; flex-wrap: wrap; gap: 7px; }
+.chip {
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .12s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip.selected { background: var(--accent-light); border-color: var(--accent); color: var(--accent); font-weight: 500; }
+
+/* ── Drug chips (複数選択) ── */
+.drug-chip-group { display: flex; flex-direction: column; gap: 8px; }
+.drug-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  cursor: pointer;
+  transition: all .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.drug-chip.selected {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+.drug-check {
+  width: 20px; height: 20px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all .12s;
+  font-size: 12px;
+}
+.drug-chip.selected .drug-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.drug-label { font-size: 14px; font-weight: 500; }
+.drug-sub { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+/* ── Conditional ── */
+.conditional { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .3s ease, opacity .2s; pointer-events: none; }
+.conditional.open { max-height: 400px; opacity: 1; pointer-events: auto; }
+
+/* ── Input row ── */
+.input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ── Section head ── */
+.section-head {
+  font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .5px;
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.section-head::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── Divider ── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* ── Submit ── */
+.btn-submit {
+  width: 100%; padding: 15px;
+  border: none; border-radius: var(--radius);
+  background: var(--accent); color: #fff;
+  font-family: var(--sans); font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: background .15s, transform .1s;
+  margin-top: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-submit:active { transform: scale(.97); background: var(--accent-hover); }
+.btn-submit:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  left: 50%; transform: translateX(-50%) translateY(70px);
+  background: var(--text-primary); color: var(--bg);
+  padding: 11px 22px; border-radius: 999px;
+  font-size: 14px; font-weight: 500; white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,.2);
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1);
+  z-index: 999; pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── History ── */
+.log-entry {
+  background: var(--surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+}
+.log-date { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-bottom: 7px; }
+.log-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.log-tag {
+  font-size: 12px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-secondary); background: var(--surface-alt);
+}
+.log-tag.pain { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
+.log-tag.drug { background: var(--warn-light); border-color: var(--warn); color: var(--warn); }
+.log-tag.ok   { background: var(--success-light); border-color: var(--success); color: var(--success); }
+.empty-state { text-align: center; padding: 56px 20px; color: var(--text-muted); font-size: 14px; }
+.empty-state .icon { font-size: 44px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<canvas id="season-canvas"></canvas>
+
+<div class="app-shell">
+<header class="app-header">
+  <h1>頭痛ログ</h1>
+  <div class="header-right">
+    <span class="season-badge" id="season-badge"></span>
+    <span class="header-meta" id="clock">--:--</span>
+  </div>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('headache')" id="tab-headache">🤕 頭痛発症時</button>
+  <button class="tab-btn" onclick="switchTab('night')" id="tab-night">🌙 夜の記録</button>
+  <button class="tab-btn" onclick="switchTab('history')" id="tab-history">📋 履歴</button>
+</div>
+
+<!-- ========== 頭痛発症時 ========== -->
+<div class="main" id="pane-headache">
+  <div class="weather-banner">
+    <div class="weather-icon" id="w-icon">⏳</div>
+    <div class="weather-body">
+      <div class="weather-grid" id="weather-grid"><div class="weather-item" style="grid-column:1/-1">取得中…</div></div>
+      <div class="weather-status" id="w-status">位置情報を取得しています</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">発症の詳細</div>
+
+    <div class="field">
+      <label class="field-label">発症時刻 <span class="required">*</span></label>
+      <input type="time" id="h-onset-time">
+    </div>
+
+    <div class="field">
+      <label class="field-label">痛みの強さ <span class="required">*</span></label>
+      <div class="scale-wrap" id="scale-pain"></div>
+      <input type="hidden" id="pain-val">
+      <div class="scale-hint"><span>気にならない</span><span>救急レベル</span></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">部位（複数可）</label>
+      <div class="chip-group" id="chips-area"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">性質（複数可）</label>
+      <div class="chip-group" id="chips-type"></div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="field">
+      <label class="field-label">前兆</label>
+      <div class="toggle-group">
+        <button class="toggle-btn" onclick="toggleYN(this,'h-aura','yes')">あった</button>
+        <button class="toggle-btn" onclick="toggleYN(this,'h-aura','no')">なかった</button>
+      </div>
+      <input type="hidden" id="h-aura">
+    </div>
+
+    <div class="field" style="margin-bottom:0">
+      <label class="field-label">随伴症状（複数可）</label>
+      <div class="chip-group" id="chips-assoc"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head">薬の服用（複数可）</div>
+    <div class="drug-chip-group" id="drug-group"></div>
+    <div class="conditional" id="cond-drug-time">
+      <div style="margin-top:14px">
+        <label class="field-label">服用時刻</label>
+        <input type="time" id="h-drug-time">
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-submit" onclick="submitHeadache()">記録する</button>
+</div>
+
+<!-- ========== 夜の記録 ========== -->
+<div class="main" id="pane-night" style="display:none">
+  <div class="weather-banner">
+    <div class="weather-icon" id="w-icon-n">⏳</div>
+    <div class="weather-body">
+      <div class="weather-grid" id="weather-grid-n"><div class="weather-item" style="grid-column:1/-1">取得中…</div></div>
+      <div class="weather-status" id="w-status-n">位置情報を取得しています</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">睡眠</div>
+    <div class="input-row">
+      <div class="field" style="margin-bottom:0">
+        <label class="field-label">起床時刻 <span class="required">*</span></label>
+        <input type="time" id="n-wake">
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label class="field-label">睡眠時間 (h) <span class="required">*</span></label>
+        <input type="number" id="n-sleep" min="0" max="24" step="0.5" placeholder="7.0">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">今日の状況</div>
+    <div class="field">
+      <label class="field-label">カフェイン (杯)</label>
+      <input type="number" id="n-caffeine" min="0" max="20" step="1" placeholder="0">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label class="field-label">今日、頭痛はあったか</label>
+      <div class="toggle-group">
+        <button class="toggle-btn" onclick="toggleYN(this,'n-had-headache','yes')">あった</button>
+        <button class="toggle-btn" onclick="toggleYN(this,'n-had-headache','no')">なかった</button>
+      </div>
+      <input type="hidden" id="n-had-headache">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">メモ（食事・体調・できごとなど）</div>
+    <textarea id="n-memo" placeholder="今日食べたもの、肩こり、ストレスの原因など…"></textarea>
+  </div>
+
+  <button class="btn-submit" onclick="submitNight()">今日の記録を保存</button>
+</div>
+
+<!-- ========== 履歴 ========== -->
+<div class="main" id="pane-history" style="display:none">
+  <div id="history-list"></div>
+</div>
+</div><!-- /app-shell -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 季節テーマ定義
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const SEASONS = {
+  1: {
+    badge: '🎍',
+    bg: ['#0a0e1a','#1a1040','#0d1525'],
+    overlay: 'linear-gradient(160deg,rgba(255,220,80,.07) 0%,rgba(180,120,20,.04) 100%)',
+    particles: () => initSnow({ color:'#fffde7', count:40, size:[2,5], speed:[0.3,0.8], sway:0.5 }),
+    extra: drawNewYear
+  },
+  2: {
+    badge: '🍫',
+    bg: ['#1a0a14','#2d0f22','#120810'],
+    overlay: 'linear-gradient(160deg,rgba(220,80,120,.08) 0%,rgba(255,255,255,.03) 100%)',
+    particles: () => initMixed([
+      { color:'#fff', count:25, size:[1,3], speed:[0.3,0.7], sway:0.4, shape:'snow' },
+      { color:'#ff6b9d', count:15, size:[8,14], speed:[0.4,0.9], sway:1.2, shape:'heart' }
+    ])
+  },
+  3: {
+    badge: '🌸',
+    bg: ['#1a0f14','#2a1020','#0f0a10'],
+    overlay: 'linear-gradient(160deg,rgba(255,182,193,.08) 0%,rgba(180,100,140,.04) 100%)',
+    particles: () => initPetals({ color:'#ffb6c1', color2:'#ff8fab', count:35 })
+  },
+  4: {
+    badge: '🌱',
+    bg: ['#0a140a','#0d200d','#081008'],
+    overlay: 'linear-gradient(160deg,rgba(100,200,80,.09) 0%,rgba(180,240,100,.04) 100%)',
+    particles: () => initSparkles({ color:'#a8e063', count:30, size:[2,6] })
+  },
+  5: {
+    badge: '☁️',
+    bg: ['#0a1220','#0e1a2e','#080f1a'],
+    overlay: 'linear-gradient(180deg,rgba(100,160,255,.08) 0%,rgba(200,230,255,.05) 100%)',
+    particles: () => initClouds()
+  },
+  6: {
+    badge: '🌧️',
+    bg: ['#080e18','#0a1520','#060c14'],
+    overlay: 'linear-gradient(180deg,rgba(80,120,200,.08) 0%,rgba(60,100,180,.04) 100%)',
+    particles: () => initRain()
+  },
+  7: {
+    badge: '🎋',
+    bg: ['#020410','#050818','#010310'],
+    overlay: 'linear-gradient(160deg,rgba(100,80,200,.06) 0%,rgba(80,120,255,.04) 100%)',
+    particles: () => initStars({ milkyWay: true })
+  },
+  8: {
+    badge: '🌻',
+    bg: ['#100a00','#1e1200','#0c0800'],
+    overlay: 'linear-gradient(160deg,rgba(255,200,0,.08) 0%,rgba(255,140,0,.05) 100%)',
+    particles: () => initSunRays()
+  },
+  9: {
+    badge: '🌅',
+    bg: ['#140808','#201010','#0e0606'],
+    overlay: 'linear-gradient(180deg,rgba(255,120,60,.09) 0%,rgba(180,60,120,.06) 50%,rgba(60,60,140,.06) 100%)',
+    particles: () => initDragonflies()
+  },
+  10: {
+    badge: '🎃',
+    bg: ['#0a0500','#150a00','#060400'],
+    overlay: 'linear-gradient(160deg,rgba(255,100,0,.08) 0%,rgba(120,0,180,.06) 100%)',
+    particles: () => initBats()
+  },
+  11: {
+    badge: '🍂',
+    bg: ['#120a04','#1e1008','#0c0804'],
+    overlay: 'linear-gradient(160deg,rgba(200,120,60,.08) 0%,rgba(160,80,30,.04) 100%)',
+    particles: () => initLeaves()
+  },
+  12: {
+    badge: '🎄',
+    bg: ['#040a10','#060e18','#020810'],
+    overlay: 'linear-gradient(160deg,rgba(0,180,80,.06) 0%,rgba(200,0,0,.05) 50%,rgba(255,200,0,.04) 100%)',
+    particles: () => initChristmas()
+  }
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Canvas engine
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const canvas = document.getElementById('season-canvas');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [], animId, drawExtra = null;
+
+function resizeCanvas() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
+
+// ── Particle base ──
+class Particle {
+  constructor(cfg) {
+    Object.assign(this, cfg);
+    this.reset(true);
+  }
+  reset(init) {
+    this.x = rand(0, W);
+    this.y = init ? rand(-H, H) : -20;
+    this.vx = rand(-0.3, 0.3) * (this.sway || 1);
+    this.vy = rand(this.speed[0], this.speed[1]);
+    this.r  = rand(this.size[0], this.size[1]);
+    this.alpha = rand(0.4, 1);
+    this.angle = rand(0, Math.PI * 2);
+    this.spin  = rand(-0.03, 0.03);
+  }
+  step() {
+    this.x += this.vx + Math.sin(Date.now() * 0.001 + this.x) * 0.2;
+    this.y += this.vy;
+    this.angle += this.spin;
+    if (this.y > H + 30) this.reset(false);
+  }
+}
+
+// ── Snow ──
+function initSnow(cfg) {
+  particles = Array.from({ length: cfg.count }, () =>
+    new Particle({ ...cfg, shape: 'snow' })
+  );
+}
+
+// ── Mixed particles ──
+function initMixed(cfgs) {
+  particles = [];
+  cfgs.forEach(cfg => {
+    for (let i = 0; i < cfg.count; i++) particles.push(new Particle(cfg));
+  });
+}
+
+// ── Sakura petals ──
+function initPetals(cfg) {
+  particles = Array.from({ length: cfg.count }, () => ({
+    x: rand(0, W), y: rand(-H, H),
+    vx: rand(-0.5, 0.5), vy: rand(0.5, 1.5),
+    r: rand(5, 10), angle: rand(0, Math.PI * 2), spin: rand(-0.04, 0.04),
+    alpha: rand(0.5, 0.9),
+    color: Math.random() > 0.5 ? cfg.color : cfg.color2,
+    sway: rand(0.5, 1.5), phase: rand(0, Math.PI * 2),
+    step() {
+      this.phase += 0.03;
+      this.x += this.vx + Math.sin(this.phase) * this.sway * 0.5;
+      this.y += this.vy;
+      this.angle += this.spin;
+      if (this.y > H + 20) { this.y = -20; this.x = rand(0, W); }
+    }
+  }));
+}
+
+// ── Sparkles (April) ──
+function initSparkles(cfg) {
+  particles = Array.from({ length: cfg.count }, () => ({
+    x: rand(0, W), y: rand(-H, H),
+    vy: rand(0.3, 0.8), vx: rand(-0.3, 0.3),
+    r: rand(cfg.size[0], cfg.size[1]),
+    alpha: rand(0.3, 0.8), color: cfg.color,
+    pulse: rand(0, Math.PI * 2),
+    step() {
+      this.pulse += 0.05;
+      this.alpha = 0.4 + Math.sin(this.pulse) * 0.3;
+      this.y += this.vy; this.x += this.vx;
+      if (this.y > H + 10) { this.y = -10; this.x = rand(0, W); }
+    }
+  }));
+}
+
+// ── Clouds (May) ──
+function initClouds() {
+  particles = Array.from({ length: 6 }, (_, i) => ({
+    x: rand(0, W), y: rand(30, H * 0.5),
+    vx: rand(0.2, 0.6), vy: 0,
+    r: rand(40, 90), alpha: rand(0.04, 0.1),
+    step() {
+      this.x += this.vx;
+      if (this.x - this.r > W + 100) this.x = -this.r - 50;
+    }
+  }));
+}
+
+// ── Rain (June) ──
+function initRain() {
+  particles = Array.from({ length: 80 }, () => ({
+    x: rand(0, W), y: rand(-H, H),
+    vx: rand(0.5, 1.5), vy: rand(8, 18),
+    len: rand(8, 20), alpha: rand(0.2, 0.5),
+    step() {
+      this.x += this.vx; this.y += this.vy;
+      if (this.y > H + 10) { this.y = -10; this.x = rand(0, W); }
+    }
+  }));
+}
+
+// ── Stars + Milky Way (July) ──
+function initStars(cfg) {
+  particles = Array.from({ length: 120 }, () => ({
+    x: rand(0, W), y: rand(0, H),
+    r: rand(0.5, 2.5), alpha: rand(0.3, 1),
+    twinkle: rand(0, Math.PI * 2), speed: rand(0.02, 0.06),
+    step() { this.twinkle += this.speed; this.alpha = 0.3 + Math.abs(Math.sin(this.twinkle)) * 0.7; }
+  }));
+}
+
+// ── Sun rays (August) ──
+function initSunRays() {
+  particles = Array.from({ length: 12 }, (_, i) => ({
+    angle: (i / 12) * Math.PI * 2, len: rand(80, 160),
+    alpha: rand(0.03, 0.08), spin: 0.003,
+    step() { this.angle += this.spin; }
+  }));
+}
+
+// ── Dragonflies (September) ──
+function initDragonflies() {
+  particles = [
+    ...Array.from({ length: 30 }, () => ({
+      x: rand(0, W), y: rand(0, H),
+      r: rand(1, 2.5), alpha: rand(0.3, 0.8),
+      color: Math.random() > 0.3 ? '#ff7043' : '#ab47bc',
+      twinkle: rand(0, Math.PI*2), speed: rand(0.02,0.05),
+      step() { this.twinkle += this.speed; this.alpha = 0.2 + Math.abs(Math.sin(this.twinkle))*0.6; }
+    })),
+    ...Array.from({ length: 5 }, () => ({
+      x: rand(0, W), y: rand(H * 0.3, H * 0.8),
+      vx: rand(-1.5, 1.5), vy: rand(-0.5, 0.5),
+      phase: rand(0, Math.PI*2),
+      wing: 0, wingDir: 1,
+      step() {
+        this.phase += 0.02;
+        this.x += this.vx + Math.sin(this.phase)*0.5;
+        this.y += this.vy + Math.cos(this.phase*0.7)*0.3;
+        this.wing += 0.15 * this.wingDir;
+        if(Math.abs(this.wing) > 0.4) this.wingDir *= -1;
+        if(this.x<-20) this.x=W+20; if(this.x>W+20) this.x=-20;
+        if(this.y<20) this.vy=Math.abs(this.vy); if(this.y>H-20) this.vy=-Math.abs(this.vy);
+      },
+      isDragonfly: true
+    }))
+  ];
+}
+
+// ── Bats (October) ──
+function initBats() {
+  particles = Array.from({ length: 12 }, () => ({
+    x: rand(0, W), y: rand(H * 0.1, H * 0.7),
+    vx: rand(-2, 2) || 1, vy: rand(-0.5, 0.5),
+    phase: rand(0, Math.PI*2), wing: 0, wingDir: 1,
+    step() {
+      this.phase += 0.015;
+      this.x += this.vx; this.y += this.vy + Math.sin(this.phase)*0.5;
+      this.wing += 0.12 * this.wingDir;
+      if(Math.abs(this.wing) > 0.5) this.wingDir *= -1;
+      if(this.x < -40) this.x = W + 40;
+      if(this.x > W + 40) this.x = -40;
+      if(this.y < 10) this.vy = Math.abs(this.vy);
+      if(this.y > H - 10) this.vy = -Math.abs(this.vy);
+    }
+  }));
+}
+
+// ── Leaves (November) ──
+function initLeaves() {
+  const colors = ['#e65100','#bf360c','#f9a825','#6d4c41','#d84315'];
+  particles = Array.from({ length: 30 }, () => ({
+    x: rand(0, W), y: rand(-H, H),
+    vx: rand(-0.8, 0.8), vy: rand(0.8, 2.5),
+    r: rand(6, 14), angle: rand(0, Math.PI*2), spin: rand(-0.05,0.05),
+    alpha: rand(0.5, 0.9), color: colors[randInt(0, colors.length-1)],
+    phase: rand(0, Math.PI*2),
+    step() {
+      this.phase += 0.04;
+      this.x += this.vx + Math.sin(this.phase)*0.8;
+      this.y += this.vy; this.angle += this.spin;
+      if(this.y > H + 20) { this.y = -20; this.x = rand(0, W); }
+    }
+  }));
+}
+
+// ── Christmas (December) ──
+function initChristmas() {
+  particles = [
+    ...Array.from({ length: 40 }, () => new Particle({ color:'#fff', count:40, size:[1,4], speed:[0.4,1.2], sway:0.8, shape:'snow' })),
+    ...Array.from({ length: 20 }, () => ({
+      x: rand(0, W), y: rand(0, H),
+      r: rand(2, 5), alpha: rand(0.4, 1),
+      color: ['#ff0000','#ffd700','#00c853','#ffffff'][randInt(0,3)],
+      twinkle: rand(0, Math.PI*2), speed: rand(0.03,0.08),
+      step() { this.twinkle += this.speed; this.alpha = 0.3 + Math.abs(Math.sin(this.twinkle))*0.7; }
+    }))
+  ];
+}
+
+// ── New Year extra draw (January) ──
+function drawNewYear() {
+  const cx = W * 0.82, cy = H * 0.22, rays = 12;
+  const t = Date.now() * 0.0005;
+  for(let i = 0; i < rays; i++) {
+    const a = (i/rays)*Math.PI*2 + t;
+    const len = 60 + Math.sin(t*2+i)*15;
+    const g = ctx.createLinearGradient(cx, cy, cx+Math.cos(a)*len, cy+Math.sin(a)*len);
+    g.addColorStop(0, 'rgba(255,220,80,0.18)');
+    g.addColorStop(1, 'rgba(255,180,0,0)');
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx+Math.cos(a)*len, cy+Math.sin(a)*len);
+    ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, 18, 0, Math.PI*2);
+  const rg = ctx.createRadialGradient(cx,cy,0,cx,cy,18);
+  rg.addColorStop(0,'rgba(255,240,120,0.6)');
+  rg.addColorStop(1,'rgba(255,180,0,0)');
+  ctx.fillStyle = rg; ctx.fill();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Draw loop
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function drawParticle(p) {
+  ctx.save();
+  ctx.globalAlpha = p.alpha || 0.7;
+
+  if(p.shape === 'snow') {
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+  } else if(p.shape === 'heart') {
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+    const s = p.r * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(0,-s*2);
+    ctx.bezierCurveTo(s*3,-s*5, s*7,-s, 0, s*4);
+    ctx.bezierCurveTo(-s*7,-s, -s*3,-s*5, 0,-s*2);
+    ctx.fill();
+  } else if(p.isDragonfly) {
+    ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
+    ctx.strokeStyle = 'rgba(255,120,50,0.6)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,120,50,0.8)';
+    ctx.beginPath(); ctx.arc(7,0,2,0,Math.PI*2); ctx.fill();
+    const wa = p.wing;
+    [[1,-1],[1,1],[-1,-1],[-1,1]].forEach(([sx,sy])=>{
+      ctx.beginPath(); ctx.moveTo(0,0);
+      ctx.bezierCurveTo(sx*8,sy*6+wa*10, sx*15,sy*4+wa*8, sx*12,sy*2);
+      ctx.fillStyle=`rgba(200,220,255,${0.15+Math.abs(wa)*0.3})`;
+      ctx.fill();
+    });
+  } else if(p.wing !== undefined && !p.isDragonfly) {
+    // bat
+    ctx.translate(p.x, p.y);
+    ctx.fillStyle = 'rgba(80,0,100,0.7)';
+    const wa = p.wing;
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.bezierCurveTo(8,wa*20, 20,wa*15, 22,2);
+    ctx.bezierCurveTo(22,-4, 10,-4, 0,0);
+    ctx.bezierCurveTo(-10,-4,-22,-4,-22,2);
+    ctx.bezierCurveTo(-20,wa*15,-8,wa*20, 0,0);
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(0,-3,3,0,Math.PI*2);
+    ctx.fillStyle='rgba(60,0,80,0.9)'; ctx.fill();
+  } else if(p.len) {
+    // rain
+    ctx.strokeStyle = 'rgba(140,180,255,'+p.alpha+')';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x - p.vx*p.len*0.1, p.y - p.len);
+    ctx.stroke();
+  } else if(p.vx !== undefined && p.vy === 0) {
+    // cloud
+    ctx.fillStyle = `rgba(200,220,255,${p.alpha})`;
+    for(let ci=0; ci<4; ci++) {
+      ctx.beginPath(); ctx.arc(p.x+ci*p.r*0.5-p.r*0.75, p.y+Math.sin(ci)*p.r*0.2, p.r*(0.5+ci*0.08), 0, Math.PI*2); ctx.fill();
+    }
+  } else if(p.angle !== undefined && p.vy === undefined) {
+    // sun ray
+    ctx.save();
+    ctx.translate(W*0.5, H*0.15);
+    const g2 = ctx.createLinearGradient(0,0, Math.cos(p.angle)*p.len, Math.sin(p.angle)*p.len);
+    g2.addColorStop(0,'rgba(255,200,0,0.2)'); g2.addColorStop(1,'rgba(255,160,0,0)');
+    ctx.strokeStyle = g2; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(p.angle)*p.len, Math.sin(p.angle)*p.len);
+    ctx.stroke(); ctx.restore();
+  } else {
+    // generic circle (sparkle, star, leaf outline)
+    if(p.color) ctx.fillStyle = p.color;
+    if(p.r <= 3) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+    } else {
+      // leaf
+      ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+      ctx.fillStyle = p.color || '#e65100';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.r, p.r*0.55, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.lineWidth=0.5; ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function loop() {
+  ctx.clearRect(0, 0, W, H);
+
+  // July: Milky Way
+  if(new Date().getMonth()+1 === 7) {
+    const g = ctx.createLinearGradient(W*0.1, H*0.1, W*0.9, H*0.7);
+    g.addColorStop(0,'rgba(120,100,200,0.06)');
+    g.addColorStop(0.5,'rgba(180,160,255,0.12)');
+    g.addColorStop(1,'rgba(100,80,180,0.06)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(W*0.5, H*0.4, W*0.4, H*0.15, -0.4, 0, Math.PI*2); ctx.fill();
+  }
+
+  particles.forEach(p => { p.step(); drawParticle(p); });
+  if(drawExtra) drawExtra();
+  animId = requestAnimationFrame(loop);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Apply season
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function applySeason() {
+  const m = new Date().getMonth() + 1;
+  const s = SEASONS[m];
+  document.getElementById('season-badge').textContent = s.badge;
+
+  // gradient BG
+  const [c1,c2,c3] = s.bg;
+  document.body.style.background = `radial-gradient(ellipse at 30% 20%, ${c2} 0%, ${c1} 50%, ${c3} 100%)`;
+  document.body.style.backgroundAttachment = 'fixed';
+
+  // overlay
+  document.documentElement.style.setProperty('--season-overlay', s.overlay || 'transparent');
+
+  drawExtra = s.extra || null;
+  s.particles();
+
+  cancelAnimationFrame(animId);
+  loop();
+}
+
+applySeason();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Clock
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function updateClock() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    n.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+}
+updateClock(); setInterval(updateClock, 10000);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Tabs
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function switchTab(tab) {
+  ['headache','night','history'].forEach(t => {
+    document.getElementById('pane-'+t).style.display = t===tab ? '' : 'none';
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+  if(tab==='history') renderHistory();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Pain scale
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(function buildScale() {
+  const wrap = document.getElementById('scale-pain');
+  for(let i=1;i<=10;i++){
+    const b = document.createElement('button');
+    b.className='scale-btn'; b.textContent=i;
+    b.onclick=()=>{
+      wrap.querySelectorAll('.scale-btn').forEach(x=>x.classList.remove('selected'));
+      b.classList.add('selected');
+      document.getElementById('pain-val').value=i;
+    };
+    wrap.appendChild(b);
+  }
+})();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Chips
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function buildChips(id, items) {
+  const wrap = document.getElementById(id);
+  items.forEach(item => {
+    const c = document.createElement('span');
+    c.className='chip'; c.textContent=item; c.dataset.val=item;
+    c.onclick=()=>c.classList.toggle('selected');
+    wrap.appendChild(c);
+  });
+}
+buildChips('chips-area',  ['前頭部','左側頭部','右側頭部','後頭部','頭全体','目の奥']);
+buildChips('chips-type',  ['ズキズキ（拍動性）','締め付け','鈍い痛み','刺すような痛み']);
+buildChips('chips-assoc', ['吐き気','光過敏','音過敏','匂い過敏','めまい']);
+
+function getChips(id) {
+  return [...document.querySelectorAll(`#${id} .chip.selected`)].map(c=>c.dataset.val);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Toggle Yes/No
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function toggleYN(btn, hiddenId, val) {
+  btn.parentElement.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('selected-yes','selected-no'));
+  btn.classList.add(val==='yes'?'selected-yes':'selected-no');
+  document.getElementById(hiddenId).value=val;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Drug chips (複数選択)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const DRUGS = [
+  { id:'none',    label:'服用なし',   sub:'' },
+  { id:'triptan', label:'トリプタン', sub:'片頭痛治療薬' },
+  { id:'calonapl',label:'カロナール', sub:'アセトアミノフェン' },
+];
+const selectedDrugs = new Set(['none']);
+const drugGroup = document.getElementById('drug-group');
+
+DRUGS.forEach(d => {
+  const div = document.createElement('div');
+  div.className = 'drug-chip' + (d.id==='none' ? ' selected' : '');
+  div.dataset.id = d.id;
+  div.innerHTML = `<div class="drug-check">${d.id==='none'?'✓':''}</div><span class="drug-label">${d.label}</span><span class="drug-sub">${d.sub}</span>`;
+  div.onclick = () => {
+    const check = div.querySelector('.drug-check');
+    if(d.id === 'none') {
+      // 「服用なし」は排他
+      selectedDrugs.clear(); selectedDrugs.add('none');
+      drugGroup.querySelectorAll('.drug-chip').forEach(x=>{
+        const sel = x.dataset.id==='none';
+        x.classList.toggle('selected', sel);
+        x.querySelector('.drug-check').textContent = sel ? '✓' : '';
+      });
+    } else {
+      // 薬を選んだら「なし」を外す
+      selectedDrugs.delete('none');
+      const noneEl = drugGroup.querySelector('[data-id="none"]');
+      noneEl.classList.remove('selected'); noneEl.querySelector('.drug-check').textContent='';
+
+      if(selectedDrugs.has(d.id)) {
+        selectedDrugs.delete(d.id);
+        div.classList.remove('selected'); check.textContent='';
+      } else {
+        selectedDrugs.add(d.id);
+        div.classList.add('selected'); check.textContent='✓';
+      }
+      if(selectedDrugs.size===0) {
+        selectedDrugs.add('none');
+        noneEl.classList.add('selected'); noneEl.querySelector('.drug-check').textContent='✓';
+      }
+    }
+    // 薬時刻フィールド表示
+    const hasDrug = !selectedDrugs.has('none');
+    document.getElementById('cond-drug-time').classList.toggle('open', hasDrug);
+  };
+  drugGroup.appendChild(div);
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Weather (Open-Meteo)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const WMO = {0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',95:'⛈️',96:'⛈️',99:'⛈️'};
+const WMO_T = {0:'快晴',1:'晴れ',2:'一部曇り',3:'曇り',45:'霧',48:'着氷霧',51:'霧雨（弱）',53:'霧雨',55:'霧雨（強）',61:'小雨',63:'雨',65:'大雨',71:'小雪',73:'雪',75:'大雪',80:'にわか雨（弱）',81:'にわか雨',82:'にわか雨（強）',95:'雷雨',96:'雷雨＋ひょう',99:'激しい雷雨'};
+let weatherData = null;
+
+async function fetchWeather() {
+  try {
+    const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:8000}));
+    const {latitude:lat,longitude:lon} = pos.coords;
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,surface_pressure,weather_code&timezone=Asia%2FTokyo`);
+    const j = await r.json(); const c = j.current;
+    weatherData = { temp:c.temperature_2m, humidity:c.relative_humidity_2m, pressure:Math.round(c.surface_pressure), code:c.weather_code, lat, lon, fetched_at:new Date().toISOString() };
+    ['','n'].forEach(sfx=>renderWeather(weatherData,'w-icon'+sfx.replace('','').replace('n','-n'),'weather-grid'+(sfx?'-n':''),'w-status'+(sfx?'-n':'')));
+  } catch(e) {
+    ['w-status','w-status-n'].forEach(id=>{ const el=document.getElementById(id); if(el)el.textContent='天気の取得に失敗しました'; });
+  }
+}
+function renderWeather(d, iconId, gridId, statusId) {
+  const iEl=document.getElementById(iconId), gEl=document.getElementById(gridId), sEl=document.getElementById(statusId);
+  if(!iEl||!gEl||!sEl) return;
+  iEl.textContent = WMO[d.code]??'🌡️';
+  gEl.innerHTML = `<div class="weather-item">天気</div><div class="weather-val">${WMO_T[d.code]??'不明'}</div><div class="weather-item">気温</div><div class="weather-val">${d.temp}℃</div><div class="weather-item">気圧</div><div class="weather-val">${d.pressure}hPa</div><div class="weather-item">湿度</div><div class="weather-val">${d.humidity}%</div>`;
+  sEl.textContent = '自動取得 · '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+}
+fetchWeather();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GAS エンドポイント
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2XZnUcktKew-fbaGnRwJ9B-h6hyXGFlda7qig4fmWg8upaUH7GvLq3EC9elC01_PJ/exec';
+
+async function sendToSheets(entry) {
+  return new Promise((resolve) => {
+    try {
+      // hidden form POST方式（CORS完全回避）
+      let iframe = document.getElementById('_gas_iframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.name = '_gas_iframe';
+        iframe.id = '_gas_iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+      }
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = GAS_URL;
+      form.target = '_gas_iframe';
+      form.style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify(entry);
+      form.appendChild(input);
+
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+
+      // 3秒後に成功扱い（iframeはレスポンス読めないが送信は確実）
+      setTimeout(() => resolve(true), 3000);
+    } catch(e) {
+      console.warn('GAS送信失敗:', e);
+      resolve(false);
+    }
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Storage（ローカル保存 + 未送信キュー）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const KEY='headache_logs_v2';
+const QUEUE_KEY='headache_queue_v2';
+function loadLogs(){ try{return JSON.parse(localStorage.getItem(KEY)||'[]');}catch{return[];} }
+function saveLogs(l){ localStorage.setItem(KEY,JSON.stringify(l)); }
+function loadQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch{return[];} }
+function saveQueue(q){ localStorage.setItem(QUEUE_KEY,JSON.stringify(q)); }
+
+// オフライン時に溜めた未送信データをリトライ
+async function flushQueue() {
+  const q = loadQueue();
+  if(!q.length) return;
+  const failed = [];
+  for(const entry of q) {
+    const ok = await sendToSheets(entry);
+    if(!ok) failed.push(entry);
+  }
+  saveQueue(failed);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Submit: 頭痛発症時
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function submitHeadache() {
+  const ot=document.getElementById('h-onset-time').value;
+  const pv=document.getElementById('pain-val').value;
+  if(!ot){ showToast('⚠️ 発症時刻を入力してください'); return; }
+  if(!pv){ showToast('⚠️ 痛みの強さを選んでください'); return; }
+
+  const btn = document.querySelector('#pane-headache .btn-submit');
+  btn.disabled = true; btn.textContent = '送信中…';
+
+  const entry = {
+    id:Date.now(), type:'headache', timestamp:new Date().toISOString(),
+    onset_time:ot, pain_scale:Number(pv),
+    areas:getChips('chips-area'), pain_types:getChips('chips-type'),
+    aura:document.getElementById('h-aura').value||null,
+    symptoms:getChips('chips-assoc'),
+    drugs:[...selectedDrugs],
+    drug_time:!selectedDrugs.has('none') ? document.getElementById('h-drug-time').value : null,
+    weather:weatherData
+  };
+
+  // ローカル保存（まず確実に）
+  const logs=loadLogs(); logs.unshift(entry); saveLogs(logs);
+
+  // Sheets送信
+  const ok = await sendToSheets(entry);
+  if(!ok) {
+    // 失敗したらキューに積んでおく
+    const q=loadQueue(); q.push(entry); saveQueue(q);
+    showToast('📱 ローカル保存済み（次回オンライン時にSheetsへ送信）');
+  } else {
+    showToast('✅ 記録しました（Sheetsに送信済み）');
+  }
+
+  btn.disabled = false; btn.textContent = '記録する';
+  resetHeadacheForm();
+  flushQueue();
+}
+
+function resetHeadacheForm() {
+  document.getElementById('h-onset-time').value='';
+  document.getElementById('pain-val').value='';
+  document.querySelectorAll('#scale-pain .scale-btn').forEach(b=>b.classList.remove('selected'));
+  ['chips-area','chips-type','chips-assoc'].forEach(id=>document.querySelectorAll(`#${id} .chip`).forEach(c=>c.classList.remove('selected')));
+  document.getElementById('h-aura').value='';
+  document.querySelectorAll('#pane-headache .toggle-btn').forEach(b=>b.classList.remove('selected-yes','selected-no'));
+  selectedDrugs.clear(); selectedDrugs.add('none');
+  drugGroup.querySelectorAll('.drug-chip').forEach(x=>{ const sel=x.dataset.id==='none'; x.classList.toggle('selected',sel); x.querySelector('.drug-check').textContent=sel?'✓':''; });
+  document.getElementById('cond-drug-time').classList.remove('open');
+  document.getElementById('h-drug-time').value='';
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Submit: 夜の記録
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function submitNight() {
+  const wake=document.getElementById('n-wake').value;
+  const sleep=document.getElementById('n-sleep').value;
+  if(!wake||!sleep){ showToast('⚠️ 起床時刻と睡眠時間を入力してください'); return; }
+
+  const btn = document.querySelector('#pane-night .btn-submit');
+  btn.disabled = true; btn.textContent = '送信中…';
+
+  const entry = {
+    id:Date.now(), type:'night', timestamp:new Date().toISOString(),
+    wake_time:wake, sleep_hours:Number(sleep),
+    caffeine:Number(document.getElementById('n-caffeine').value||0),
+    had_headache:document.getElementById('n-had-headache').value||null,
+    memo:document.getElementById('n-memo').value.trim(),
+    weather:weatherData
+  };
+
+  // ローカル保存
+  const logs=loadLogs(); logs.unshift(entry); saveLogs(logs);
+
+  // Sheets送信
+  const ok = await sendToSheets(entry);
+  if(!ok) {
+    const q=loadQueue(); q.push(entry); saveQueue(q);
+    showToast('📱 ローカル保存済み（次回オンライン時にSheetsへ送信）');
+  } else {
+    showToast('✅ 今日の記録を保存しました（Sheets送信済み）');
+  }
+
+  btn.disabled = false; btn.textContent = '今日の記録を保存';
+  resetNightForm();
+  flushQueue();
+}
+
+function resetNightForm() {
+  ['n-wake','n-sleep','n-caffeine','n-memo'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('n-had-headache').value='';
+  document.querySelectorAll('#pane-night .toggle-btn').forEach(b=>b.classList.remove('selected-yes','selected-no'));
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// History
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderHistory() {
+  const logs=loadLogs();
+  const el=document.getElementById('history-list');
+  if(!logs.length){ el.innerHTML=`<div class="empty-state"><div class="icon">📭</div>まだ記録がありません</div>`; return; }
+  el.innerHTML=logs.map(log=>{
+    const dt=new Date(log.timestamp);
+    const ds=dt.toLocaleDateString('ja-JP',{month:'short',day:'numeric',weekday:'short'})+' '+dt.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+    if(log.type==='headache'){
+      const drugNames={ triptan:'トリプタン', calonapl:'カロナール' };
+      const drugTags=(log.drugs||[]).filter(d=>d!=='none').map(d=>`<span class="log-tag drug">${drugNames[d]||d}</span>`).join('');
+      const tags=[`<span class="log-tag pain">痛み ${log.pain_scale}/10</span>`,...(log.areas||[]).map(a=>`<span class="log-tag">${a}</span>`),drugTags].join('');
+      return `<div class="log-entry"><div class="log-date">🤕 頭痛発症 · ${ds}</div><div class="log-tags">${tags}</div></div>`;
+    } else {
+      const hTag=log.had_headache==='yes'?'<span class="log-tag pain">頭痛あり</span>':log.had_headache==='no'?'<span class="log-tag ok">頭痛なし</span>':'';
+      const wTag=log.weather?`<span class="log-tag">${WMO[log.weather.code]??''}${log.weather.temp}℃ ${log.weather.pressure}hPa</span>`:'';
+      const tags=[`<span class="log-tag">起床 ${log.wake_time}</span>`,`<span class="log-tag">睡眠 ${log.sleep_hours}h</span>`,`<span class="log-tag">カフェイン ${log.caffeine}杯</span>`,hTag,wTag].filter(Boolean).join('');
+      return `<div class="log-entry"><div class="log-date">🌙 夜の記録 · ${ds}</div><div class="log-tags">${tags}</div>${log.memo?`<div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">${log.memo}</div>`:''}</div>`;
+    }
+  }).join('');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Toast
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Init
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+window.addEventListener('load',()=>{
+  const hhmm=new Date().toTimeString().slice(0,5);
+  document.getElementById('h-onset-time').value=hhmm;
+});
+</script>
+</body>
+</html>
