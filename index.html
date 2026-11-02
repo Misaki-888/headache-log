@@ -477,15 +477,30 @@ async function sendToSheets(entry){
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Account
+// Account（Sheets連携版）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 let currentUser=null;
+let cachedLogs=[];
 
 function loadAccounts(){return JSON.parse(localStorage.getItem('hlog_accounts')||'[]');}
 function saveAccounts(a){localStorage.setItem('hlog_accounts',JSON.stringify(a));}
 
-function renderAccountList(){
+async function renderAccountList(){
   const list=document.getElementById('account-list');
+  list.innerHTML='<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:8px">読み込み中…</div>';
+  // Sheetsからユーザー一覧を取得
+  try{
+    const r=await fetch(`${GAS_URL}?action=users`);
+    const j=await r.json();
+    if(j.ok&&j.users){
+      const sheetsUsers=j.users;
+      // ローカルのユーザーもマージ
+      const local=loadAccounts();
+      const merged=[...new Set([...sheetsUsers,...local])];
+      saveAccounts(merged);
+    }
+  }catch(e){console.log('ユーザー取得失敗、ローカルを使用');}
+
   const accounts=loadAccounts();
   list.innerHTML='';
   accounts.forEach(name=>{
@@ -509,17 +524,35 @@ function addAccount(){
   login(name);
 }
 
-function login(name){
+async function login(name){
   currentUser=name;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app-shell').style.display='';
   document.getElementById('header-avatar').textContent=name[0].toUpperCase();
   document.getElementById('header-title').textContent=`${name}の頭痛ログ`;
+
+  // Sheetsからデータを取得してキャッシュ
+  showToast('📥 データを同期中…');
+  try{
+    const r=await fetch(`${GAS_URL}?action=login&user=${encodeURIComponent(name)}`);
+    const j=await r.json();
+    if(j.ok&&j.logs){
+      cachedLogs=j.logs.map(l=>({...l,id:Number(l.id)||l.id}));
+      // ローカルにも保存
+      saveLogs(cachedLogs);
+      showToast('✅ データを同期しました');
+    }
+  }catch(e){
+    // オフライン時はローカルから
+    cachedLogs=loadLogs();
+    showToast('📱 オフライン：ローカルデータを使用');
+  }
   renderCalendar();
 }
 
 function logout(){
   currentUser=null;
+  cachedLogs=[];
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-shell').style.display='none';
   renderAccountList();
@@ -529,8 +562,15 @@ function logout(){
 // Storage（ユーザーごと）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function userKey(suffix){return `hlog_${currentUser}_${suffix}`;}
-function loadLogs(){try{return JSON.parse(localStorage.getItem(userKey('logs'))||'[]');}catch{return[];}}
-function saveLogs(l){localStorage.setItem(userKey('logs'),JSON.stringify(l));}
+function loadLogs(){
+  // キャッシュがあればキャッシュを使う
+  if(cachedLogs&&cachedLogs.length>0)return cachedLogs;
+  try{return JSON.parse(localStorage.getItem(userKey('logs'))||'[]');}catch{return[];}
+}
+function saveLogs(l){
+  cachedLogs=l;
+  localStorage.setItem(userKey('logs'),JSON.stringify(l));
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Season
@@ -703,6 +743,7 @@ async function submitHeadache(){
     aura:document.getElementById('h-aura').value||null,symptoms:getChips('chips-assoc'),
     drugs:[...selectedDrugs],drug_time:!selectedDrugs.has('none')?document.getElementById('h-drug-time').value:null,weather:weatherData};
   const logs=loadLogs();logs.unshift(entry);saveLogs(logs);
+  cachedLogs=logs;
   await sendToSheets(entry);
   showToast('✅ 頭痛記録を保存しました');
   btn.disabled=false;btn.textContent='記録する';
@@ -727,6 +768,7 @@ async function submitNight(){
     wake_time:wake,sleep_hours:Number(sleep),caffeine:Number(document.getElementById('n-caffeine').value||0),
     had_headache:document.getElementById('n-had-headache').value||null,memo:document.getElementById('n-memo').value.trim(),weather:weatherData};
   const logs=loadLogs();logs.unshift(entry);saveLogs(logs);
+  cachedLogs=logs;
   await sendToSheets(entry);
   showToast('✅ 今日の記録を保存しました');
   btn.disabled=false;btn.textContent='今日の記録を保存';
@@ -953,6 +995,7 @@ async function saveEdit(){
   const idx=logs.findIndex(l=>l.id===entry.id);
   if(idx>=0)logs[idx]=entry;else logs.unshift(entry);
   saveLogs(logs);
+  cachedLogs=logs;
   await sendToSheets({...entry,action:'edit'});
   closeModal('modal-edit');
   showToast('✅ 記録を更新しました');
@@ -964,6 +1007,7 @@ async function deleteEntry(){
   const logs=loadLogs();
   const filtered=logs.filter(l=>l.id!==editingEntry.id);
   saveLogs(filtered);
+  cachedLogs=filtered;
   await sendToSheets({id:editingEntry.id,user:currentUser,action:'delete'});
   closeModal('modal-edit');
   showToast('🗑️ 削除しました');
