@@ -762,28 +762,53 @@ async function fetchPastWeather(dateStr,timeStr){
   }catch(e){const el=document.getElementById('w-status');if(el)el.textContent='過去の天気取得に失敗しました';}
 }
 
-// 一日分の天気を取得（夜の記録用）
+// 一日分の天気を3時間おきで取得（夜の記録用）
 async function fetchDayWeather(dateStr){
   try{
     const{lat,lon}=await getPosition();
-    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,surface_pressure_msl_mean&start_date=${dateStr}&end_date=${dateStr}&timezone=Asia%2FTokyo`);
-    const j=await r.json();const d=j.daily;
-    return{
-      code:d.weather_code[0],
-      temp_max:d.temperature_2m_max[0],
-      temp_min:d.temperature_2m_min[0],
-      pressure_mean:Math.round(d.surface_pressure_msl_mean[0]),
-      lat,lon,fetched_at:new Date().toISOString(),mode:'daily',date:dateStr
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,surface_pressure,weather_code&start_date=${dateStr}&end_date=${dateStr}&timezone=Asia%2FTokyo`);
+    const j=await r.json();const h=j.hourly;
+
+    // 3時間おき（0,3,6,9,12,15,18,21時）のデータを抽出
+    const hours=[0,3,6,9,12,15,18,21];
+    const hourly=hours.map(hr=>({
+      time:`${String(hr).padStart(2,'0')}:00`,
+      temp:h.temperature_2m[hr],
+      humidity:h.relative_humidity_2m[hr],
+      pressure:Math.round(h.surface_pressure[hr]),
+      code:h.weather_code[hr],
+      weather:WMO_T[h.weather_code[hr]]??'不明'
+    }));
+
+    // 表示用サマリー
+    const temps=hourly.map(x=>x.temp);
+    const pressures=hourly.map(x=>x.pressure);
+    const summary={
+      temp_max:Math.max(...temps),
+      temp_min:Math.min(...temps),
+      pressure_max:Math.max(...pressures),
+      pressure_min:Math.min(...pressures),
+      code:h.weather_code[12]??h.weather_code[0], // 昼12時の天気を代表値に
     };
-  }catch(e){return null;}
+
+    return{
+      mode:'hourly3h',
+      date:dateStr,
+      lat,lon,
+      fetched_at:new Date().toISOString(),
+      hourly, // 3時間おきの配列
+      summary  // サマリー（表示用・分析用）
+    };
+  }catch(e){console.warn('天気取得失敗',e);return null;}
 }
 
 function renderWeather(d,iconId,gridId,statusId){
   const iEl=document.getElementById(iconId),gEl=document.getElementById(gridId),sEl=document.getElementById(statusId);
   if(!iEl||!gEl||!sEl)return;
   iEl.textContent=WMO[d.code]??'🌡️';
-  if(d.mode==='daily'){
-    gEl.innerHTML=`<div class="weather-item">天気</div><div class="weather-val">${WMO_T[d.code]??'不明'}</div><div class="weather-item">最高気温</div><div class="weather-val">${d.temp_max}℃</div><div class="weather-item">最低気温</div><div class="weather-val">${d.temp_min}℃</div><div class="weather-item">平均気圧</div><div class="weather-val">${d.pressure_mean}hPa</div>`;
+  if(d.mode==='hourly3h'&&d.summary){
+    const s=d.summary;
+    gEl.innerHTML=`<div class="weather-item">天気</div><div class="weather-val">${WMO_T[s.code]??'不明'}</div><div class="weather-item">最高気温</div><div class="weather-val">${s.temp_max}℃</div><div class="weather-item">最低気温</div><div class="weather-val">${s.temp_min}℃</div><div class="weather-item">気圧変動</div><div class="weather-val">${s.pressure_min}→${s.pressure_max}hPa</div>`;
   }else{
     gEl.innerHTML=`<div class="weather-item">天気</div><div class="weather-val">${WMO_T[d.code]??'不明'}</div><div class="weather-item">気温</div><div class="weather-val">${d.temp}℃</div><div class="weather-item">気圧</div><div class="weather-val">${d.pressure}hPa</div><div class="weather-item">湿度</div><div class="weather-val">${d.humidity??'-'}%</div>`;
   }
@@ -1046,10 +1071,10 @@ function openEditModal(entry,isNew=false){
   if(entry.type==='headache'){
     const entryDateH=entry.timestamp?entry.timestamp.slice(0,10):'';
     body.innerHTML=`
-      <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date" value="${entryDateH}"></div>
-      <div class="field"><label class="field-label">発症時刻</label><input type="time" id="e-onset-time" value="${entry.onset_time||''}"></div>
+      <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date"></div>
+      <div class="field"><label class="field-label">発症時刻</label><input type="time" id="e-onset-time"></div>
       <div class="field"><label class="field-label">痛みの強さ</label>
-        <div class="scale-wrap" id="e-scale-pain"></div><input type="hidden" id="e-pain-val" value="${entry.pain_scale||''}">
+        <div class="scale-wrap" id="e-scale-pain"></div><input type="hidden" id="e-pain-val">
         <div class="scale-hint"><span>気にならない</span><span>救急レベル</span></div>
       </div>
       <div class="field"><label class="field-label">部位</label><div class="chip-group" id="e-chips-area"></div></div>
@@ -1062,11 +1087,20 @@ function openEditModal(entry,isNew=false){
       </div>
       <div class="field"><label class="field-label">随伴症状</label><div class="chip-group" id="e-chips-assoc"></div></div>
       <div class="field"><label class="field-label">薬の服用</label><div class="chip-group" id="e-chips-drug"></div></div>
-      <div class="field"><label class="field-label">服用時刻</label><input type="time" id="e-drug-time" value="${entry.drug_time||''}"></div>
+      <div class="field"><label class="field-label">服用時刻</label><input type="time" id="e-drug-time"></div>
     `;
+    // 全時刻・日付フィールドをJSで設定（Safari対応）
+    setTimeout(()=>{
+      document.getElementById('e-date').value=entryDateH;
+      const ot=String(entry.onset_time||'').trim();
+      if(ot)document.getElementById('e-onset-time').value=ot.length>=5?ot.slice(0,5):ot;
+      const dt=String(entry.drug_time||'').trim();
+      if(dt)document.getElementById('e-drug-time').value=dt.length>=5?dt.slice(0,5):dt;
+      document.getElementById('e-pain-val').value=entry.pain_scale||'';
+    },50);
     // スケール
     const sw=document.getElementById('e-scale-pain');
-    for(let i=1;i<=10;i++){const b=document.createElement('button');b.className='scale-btn'+(entry.pain_scale===i?' selected':'');b.textContent=i;b.onclick=()=>{sw.querySelectorAll('.scale-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('e-pain-val').value=i;};sw.appendChild(b);}
+    for(let i=1;i<=10;i++){const b=document.createElement('button');b.className='scale-btn'+(Number(entry.pain_scale)===i?' selected':'');b.textContent=i;b.onclick=()=>{sw.querySelectorAll('.scale-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('e-pain-val').value=i;};sw.appendChild(b);}
     // チップス
     buildEditChips('e-chips-area',['前頭部','左側頭部','右側頭部','後頭部','頭全体','目の奥'],entry.areas||[]);
     buildEditChips('e-chips-type',['ズキズキ（拍動性）','締め付け','鈍い痛み','刺すような痛み'],entry.pain_types||[]);
@@ -1075,30 +1109,30 @@ function openEditModal(entry,isNew=false){
     // 前兆
     if(entry.aura){const grp=document.getElementById('e-aura-group');grp.querySelectorAll('.toggle-btn').forEach(b=>{const v=b.onclick.toString().includes("'yes'")?'yes':'no';if(v===entry.aura)b.classList.add(v==='yes'?'selected-yes':'selected-no');});document.getElementById('e-aura').value=entry.aura;}
   } else {
-    // 対象日付を取得
     const entryDate=entry.timestamp?entry.timestamp.slice(0,10):'';
     body.innerHTML=`
-      <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date" value="${entryDate}"></div>
+      <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date"></div>
       <div class="input-row">
         <div class="field"><label class="field-label">起床時刻</label><input type="time" id="e-wake"></div>
-        <div class="field"><label class="field-label">睡眠時間(h)</label><input type="number" id="e-sleep" value="${entry.sleep_hours??''}" min="0" max="24" step="0.5"></div>
+        <div class="field"><label class="field-label">睡眠時間(h)</label><input type="number" id="e-sleep" min="0" max="24" step="0.5"></div>
       </div>
-      <div class="field"><label class="field-label">カフェイン(杯)</label><input type="number" id="e-caffeine" value="${entry.caffeine??0}" min="0" max="20"></div>
+      <div class="field"><label class="field-label">カフェイン(杯)</label><input type="number" id="e-caffeine" min="0" max="20"></div>
       <div class="field"><label class="field-label">今日の頭痛</label>
         <div class="toggle-group" id="e-headache-group">
           <button class="toggle-btn" onclick="toggleYN(this,'e-had-headache','yes')">あった</button>
           <button class="toggle-btn" onclick="toggleYN(this,'e-had-headache','no')">なかった</button>
         </div><input type="hidden" id="e-had-headache">
       </div>
-      <div class="field"><label class="field-label">メモ</label><textarea id="e-memo">${entry.memo||''}</textarea></div>
+      <div class="field"><label class="field-label">メモ</label><textarea id="e-memo"></textarea></div>
     `;
-    // 起床時刻をJSで設定（バグ修正）
+    // 全フィールドをJSで設定（Safari対応）
     setTimeout(()=>{
-      const wakeEl=document.getElementById('e-wake');
-      if(wakeEl&&entry.wake_time){
-        const wt=String(entry.wake_time).trim();
-        wakeEl.value=wt.length>=5?wt.slice(0,5):'';
-      }
+      document.getElementById('e-date').value=entryDate;
+      const wt=String(entry.wake_time||'').trim();
+      if(wt)document.getElementById('e-wake').value=wt.length>=5?wt.slice(0,5):wt;
+      document.getElementById('e-sleep').value=entry.sleep_hours??'';
+      document.getElementById('e-caffeine').value=entry.caffeine??0;
+      document.getElementById('e-memo').value=entry.memo||'';
     },50);
     if(entry.had_headache){const grp=document.getElementById('e-headache-group');grp.querySelectorAll('.toggle-btn').forEach(b=>{const v=b.onclick.toString().includes("'yes'")?'yes':'no';if(v===entry.had_headache)b.classList.add(v==='yes'?'selected-yes':'selected-no');});document.getElementById('e-had-headache').value=entry.had_headache;}
   }
