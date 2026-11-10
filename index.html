@@ -331,8 +331,19 @@ textarea{resize:vertical;min-height:80px;}
   <div class="card">
     <div class="card-label">発症の詳細</div>
     <div class="field">
+      <label class="field-label">対象日付 <span class="required">*</span></label>
+      <input type="date" id="h-date" onchange="onHeadacheDateChange()">
+    </div>
+    <div class="field">
+      <label class="field-label">入力タイミング</label>
+      <div class="toggle-group">
+        <button class="toggle-btn selected-no" id="h-timing-now" onclick="setHeadacheTiming('now')">現在</button>
+        <button class="toggle-btn" id="h-timing-later" onclick="setHeadacheTiming('later')">後入力</button>
+      </div>
+    </div>
+    <div class="field">
       <label class="field-label">発症時刻 <span class="required">*</span></label>
-      <input type="time" id="h-onset-time">
+      <input type="time" id="h-onset-time" onchange="onHeadacheTimeChange()">
     </div>
     <div class="field">
       <label class="field-label">痛みの強さ <span class="required">*</span></label>
@@ -382,6 +393,12 @@ textarea{resize:vertical;min-height:80px;}
     <div class="weather-body">
       <div class="weather-grid" id="weather-grid-n"><div class="weather-item" style="grid-column:1/-1">取得中…</div></div>
       <div class="weather-status" id="w-status-n">位置情報を取得しています</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">対象日付</div>
+    <div class="field" style="margin-bottom:0">
+      <input type="date" id="n-date">
     </div>
   </div>
   <div class="card">
@@ -708,25 +725,104 @@ function setDrugs(vals){
 const WMO={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',95:'⛈️',96:'⛈️',99:'⛈️'};
 const WMO_T={0:'快晴',1:'晴れ',2:'一部曇り',3:'曇り',45:'霧',48:'着氷霧',51:'霧雨（弱）',53:'霧雨',55:'霧雨（強）',61:'小雨',63:'雨',65:'大雨',71:'小雪',73:'雪',75:'大雪',80:'にわか雨（弱）',81:'にわか雨',82:'にわか雨（強）',95:'雷雨',96:'雷雨＋ひょう',99:'激しい雷雨'};
 let weatherData=null;
-async function fetchWeather(){
+let userLat=null,userLon=null;
+
+// 位置情報を取得してキャッシュ
+async function getPosition(){
+  if(userLat&&userLon)return{lat:userLat,lon:userLon};
+  const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:8000}));
+  userLat=pos.coords.latitude;userLon=pos.coords.longitude;
+  return{lat:userLat,lon:userLon};
+}
+
+// 現在の天気を取得（頭痛発症時・現在モード）
+async function fetchCurrentWeather(){
   try{
-    const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:8000}));
-    const{latitude:lat,longitude:lon}=pos.coords;
+    const{lat,lon}=await getPosition();
     const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,surface_pressure,weather_code&timezone=Asia%2FTokyo`);
     const j=await r.json();const c=j.current;
-    weatherData={temp:c.temperature_2m,humidity:c.relative_humidity_2m,pressure:Math.round(c.surface_pressure),code:c.weather_code,lat,lon,fetched_at:new Date().toISOString()};
+    weatherData={temp:c.temperature_2m,humidity:c.relative_humidity_2m,pressure:Math.round(c.surface_pressure),code:c.weather_code,lat,lon,fetched_at:new Date().toISOString(),mode:'current'};
     renderWeather(weatherData,'w-icon','weather-grid','w-status');
-    renderWeather(weatherData,'w-icon-n','weather-grid-n','w-status-n');
-  }catch(e){['w-status','w-status-n'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='天気の取得に失敗しました';});}
+  }catch(e){const el=document.getElementById('w-status');if(el)el.textContent='天気の取得に失敗しました';}
 }
+
+// 指定日時の天気を取得（頭痛発症時・後入力モード）
+async function fetchPastWeather(dateStr,timeStr){
+  try{
+    const{lat,lon}=await getPosition();
+    const dt=new Date(`${dateStr}T${timeStr||'12:00'}:00`);
+    const dateISO=dateStr;
+    const hour=dt.getHours();
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,surface_pressure,weather_code&start_date=${dateISO}&end_date=${dateISO}&timezone=Asia%2FTokyo`);
+    const j=await r.json();
+    const h=j.hourly;
+    const idx=Math.min(hour,h.time.length-1);
+    weatherData={temp:h.temperature_2m[idx],humidity:h.relative_humidity_2m[idx],pressure:Math.round(h.surface_pressure[idx]),code:h.weather_code[idx],lat,lon,fetched_at:new Date().toISOString(),mode:'past',target_datetime:`${dateStr}T${String(hour).padStart(2,'0')}:00`};
+    renderWeather(weatherData,'w-icon','weather-grid','w-status');
+  }catch(e){const el=document.getElementById('w-status');if(el)el.textContent='過去の天気取得に失敗しました';}
+}
+
+// 一日分の天気を取得（夜の記録用）
+async function fetchDayWeather(dateStr){
+  try{
+    const{lat,lon}=await getPosition();
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,surface_pressure_msl_mean&start_date=${dateStr}&end_date=${dateStr}&timezone=Asia%2FTokyo`);
+    const j=await r.json();const d=j.daily;
+    return{
+      code:d.weather_code[0],
+      temp_max:d.temperature_2m_max[0],
+      temp_min:d.temperature_2m_min[0],
+      pressure_mean:Math.round(d.surface_pressure_msl_mean[0]),
+      lat,lon,fetched_at:new Date().toISOString(),mode:'daily',date:dateStr
+    };
+  }catch(e){return null;}
+}
+
 function renderWeather(d,iconId,gridId,statusId){
   const iEl=document.getElementById(iconId),gEl=document.getElementById(gridId),sEl=document.getElementById(statusId);
   if(!iEl||!gEl||!sEl)return;
   iEl.textContent=WMO[d.code]??'🌡️';
-  gEl.innerHTML=`<div class="weather-item">天気</div><div class="weather-val">${WMO_T[d.code]??'不明'}</div><div class="weather-item">気温</div><div class="weather-val">${d.temp}℃</div><div class="weather-item">気圧</div><div class="weather-val">${d.pressure}hPa</div><div class="weather-item">湿度</div><div class="weather-val">${d.humidity}%</div>`;
-  sEl.textContent='自動取得 · '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+  if(d.mode==='daily'){
+    gEl.innerHTML=`<div class="weather-item">天気</div><div class="weather-val">${WMO_T[d.code]??'不明'}</div><div class="weather-item">最高気温</div><div class="weather-val">${d.temp_max}℃</div><div class="weather-item">最低気温</div><div class="weather-val">${d.temp_min}℃</div><div class="weather-item">平均気圧</div><div class="weather-val">${d.pressure_mean}hPa</div>`;
+  }else{
+    gEl.innerHTML=`<div class="weather-item">天気</div><div class="weather-val">${WMO_T[d.code]??'不明'}</div><div class="weather-item">気温</div><div class="weather-val">${d.temp}℃</div><div class="weather-item">気圧</div><div class="weather-val">${d.pressure}hPa</div><div class="weather-item">湿度</div><div class="weather-val">${d.humidity??'-'}%</div>`;
+  }
+  const modeStr=d.mode==='past'?`過去データ(${d.target_datetime?.slice(11,16)}時点)`:d.mode==='daily'?'一日分データ':'リアルタイム';
+  sEl.textContent=`自動取得(${modeStr}) · `+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
 }
-fetchWeather();
+
+// 頭痛発症時の入力タイミング切替
+let headacheTiming='now';
+function setHeadacheTiming(mode){
+  headacheTiming=mode;
+  document.getElementById('h-timing-now').className='toggle-btn'+(mode==='now'?' selected-no':'');
+  document.getElementById('h-timing-later').className='toggle-btn'+(mode==='later'?' selected-no':'');
+  if(mode==='now'){fetchCurrentWeather();}
+  else{
+    // 後入力モード：日付と時刻が入力されたら自動取得
+    const d=document.getElementById('h-date').value;
+    const t=document.getElementById('h-onset-time').value;
+    if(d&&t)fetchPastWeather(d,t);
+  }
+}
+
+// 後入力モード時に時刻変更で天気再取得
+function onHeadacheTimeChange(){
+  if(headacheTiming==='later'){
+    const d=document.getElementById('h-date').value;
+    const t=document.getElementById('h-onset-time').value;
+    if(d&&t)fetchPastWeather(d,t);
+  }
+}
+function onHeadacheDateChange(){
+  if(headacheTiming==='later'){
+    const d=document.getElementById('h-date').value;
+    const t=document.getElementById('h-onset-time').value;
+    if(d&&t)fetchPastWeather(d,t);
+  }
+}
+
+fetchCurrentWeather();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Submit
@@ -734,14 +830,29 @@ fetchWeather();
 async function submitHeadache(){
   const ot=document.getElementById('h-onset-time').value;
   const pv=document.getElementById('pain-val').value;
+  const hdate=document.getElementById('h-date').value;
+  if(!hdate){showToast('⚠️ 対象日付を入力してください');return;}
   if(!ot){showToast('⚠️ 発症時刻を入力してください');return;}
   if(!pv){showToast('⚠️ 痛みの強さを選んでください');return;}
   const btn=document.querySelector('#pane-headache .btn-submit');
   btn.disabled=true;btn.textContent='送信中…';
-  const entry={id:Date.now(),type:'headache',user:currentUser,timestamp:new Date().toISOString(),
+
+  // 後入力の場合は送信前に天気を再取得
+  if(headacheTiming==='later'&&ot){
+    await fetchPastWeather(hdate,ot);
+    await new Promise(r=>setTimeout(r,500));
+  }
+
+  // 対象日付＋時刻でtimestampを作成
+  const targetTs=new Date(`${hdate}T${ot}:00`).toISOString();
+
+  const entry={id:Date.now(),type:'headache',user:currentUser,
+    timestamp:targetTs,
+    recorded_at:new Date().toISOString(),
     onset_time:ot,pain_scale:Number(pv),areas:getChips('chips-area'),pain_types:getChips('chips-type'),
     aura:document.getElementById('h-aura').value||null,symptoms:getChips('chips-assoc'),
-    drugs:[...selectedDrugs],drug_time:!selectedDrugs.has('none')?document.getElementById('h-drug-time').value:null,weather:weatherData};
+    drugs:[...selectedDrugs],drug_time:!selectedDrugs.has('none')?document.getElementById('h-drug-time').value:null,
+    weather:weatherData,timing:headacheTiming};
   const logs=loadLogs();logs.unshift(entry);saveLogs(logs);
   cachedLogs=logs;
   await sendToSheets(entry);
@@ -750,23 +861,43 @@ async function submitHeadache(){
   resetHeadacheForm();
 }
 function resetHeadacheForm(){
+  const today=new Date().toISOString().slice(0,10);
+  document.getElementById('h-date').value=today;
   document.getElementById('h-onset-time').value='';document.getElementById('pain-val').value='';
   document.querySelectorAll('#scale-pain .scale-btn').forEach(b=>b.classList.remove('selected'));
   ['chips-area','chips-type','chips-assoc'].forEach(id=>document.querySelectorAll(`#${id} .chip`).forEach(c=>c.classList.remove('selected')));
   document.getElementById('h-aura').value='';
   document.querySelectorAll('#pane-headache .toggle-btn').forEach(b=>b.classList.remove('selected-yes','selected-no'));
   setDrugs(['none']);document.getElementById('h-drug-time').value='';
+  headacheTiming='now';
+  document.getElementById('h-timing-now').className='toggle-btn selected-no';
+  document.getElementById('h-timing-later').className='toggle-btn';
 }
 
 async function submitNight(){
   const wake=document.getElementById('n-wake').value;
   const sleep=document.getElementById('n-sleep').value;
-  if(!wake||!sleep){showToast('⚠️ 起床時刻と睡眠時間を入力してください');return;}
+  const ndate=document.getElementById('n-date').value;
+  if(!ndate){showToast('⚠️ 対象日付を入力してください');return;}
+  if(!wake||sleep===''||sleep===null||sleep===undefined){showToast('⚠️ 起床時刻と睡眠時間を入力してください');return;}
   const btn=document.querySelector('#pane-night .btn-submit');
   btn.disabled=true;btn.textContent='送信中…';
-  const entry={id:Date.now(),type:'night',user:currentUser,timestamp:new Date().toISOString(),
-    wake_time:wake,sleep_hours:Number(sleep),caffeine:Number(document.getElementById('n-caffeine').value||0),
-    had_headache:document.getElementById('n-had-headache').value||null,memo:document.getElementById('n-memo').value.trim(),weather:weatherData};
+
+  // 一日分の天気を取得
+  showToast('🌤️ 天気データを取得中…');
+  const dayWeather=await fetchDayWeather(ndate);
+
+  // 対象日付でtimestampを作成（22:00固定）
+  const targetTs=new Date(`${ndate}T22:00:00`).toISOString();
+
+  const entry={id:Date.now(),type:'night',user:currentUser,
+    timestamp:targetTs,
+    recorded_at:new Date().toISOString(),
+    wake_time:wake,sleep_hours:Number(sleep),
+    caffeine:Number(document.getElementById('n-caffeine').value||0),
+    had_headache:document.getElementById('n-had-headache').value||null,
+    memo:document.getElementById('n-memo').value.trim(),
+    weather:dayWeather};
   const logs=loadLogs();logs.unshift(entry);saveLogs(logs);
   cachedLogs=logs;
   await sendToSheets(entry);
@@ -775,6 +906,8 @@ async function submitNight(){
   resetNightForm();
 }
 function resetNightForm(){
+  const today=new Date().toISOString().slice(0,10);
+  document.getElementById('n-date').value=today;
   ['n-wake','n-sleep','n-caffeine','n-memo'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('n-had-headache').value='';
   document.querySelectorAll('#pane-night .toggle-btn').forEach(b=>b.classList.remove('selected-yes','selected-no'));
@@ -911,7 +1044,9 @@ function openEditModal(entry,isNew=false){
   const body=document.getElementById('modal-edit-body');
 
   if(entry.type==='headache'){
+    const entryDateH=entry.timestamp?entry.timestamp.slice(0,10):'';
     body.innerHTML=`
+      <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date" value="${entryDateH}"></div>
       <div class="field"><label class="field-label">発症時刻</label><input type="time" id="e-onset-time" value="${entry.onset_time||''}"></div>
       <div class="field"><label class="field-label">痛みの強さ</label>
         <div class="scale-wrap" id="e-scale-pain"></div><input type="hidden" id="e-pain-val" value="${entry.pain_scale||''}">
@@ -940,12 +1075,15 @@ function openEditModal(entry,isNew=false){
     // 前兆
     if(entry.aura){const grp=document.getElementById('e-aura-group');grp.querySelectorAll('.toggle-btn').forEach(b=>{const v=b.onclick.toString().includes("'yes'")?'yes':'no';if(v===entry.aura)b.classList.add(v==='yes'?'selected-yes':'selected-no');});document.getElementById('e-aura').value=entry.aura;}
   } else {
+    // 対象日付を取得
+    const entryDate=entry.timestamp?entry.timestamp.slice(0,10):'';
     body.innerHTML=`
+      <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date" value="${entryDate}"></div>
       <div class="input-row">
-        <div class="field"><label class="field-label">起床時刻</label><input type="time" id="e-wake" value="${entry.wake_time||''}"></div>
-        <div class="field"><label class="field-label">睡眠時間(h)</label><input type="number" id="e-sleep" value="${entry.sleep_hours||''}" min="0" max="24" step="0.5"></div>
+        <div class="field"><label class="field-label">起床時刻</label><input type="time" id="e-wake"></div>
+        <div class="field"><label class="field-label">睡眠時間(h)</label><input type="number" id="e-sleep" value="${entry.sleep_hours??''}" min="0" max="24" step="0.5"></div>
       </div>
-      <div class="field"><label class="field-label">カフェイン(杯)</label><input type="number" id="e-caffeine" value="${entry.caffeine||0}" min="0" max="20"></div>
+      <div class="field"><label class="field-label">カフェイン(杯)</label><input type="number" id="e-caffeine" value="${entry.caffeine??0}" min="0" max="20"></div>
       <div class="field"><label class="field-label">今日の頭痛</label>
         <div class="toggle-group" id="e-headache-group">
           <button class="toggle-btn" onclick="toggleYN(this,'e-had-headache','yes')">あった</button>
@@ -954,6 +1092,14 @@ function openEditModal(entry,isNew=false){
       </div>
       <div class="field"><label class="field-label">メモ</label><textarea id="e-memo">${entry.memo||''}</textarea></div>
     `;
+    // 起床時刻をJSで設定（バグ修正）
+    setTimeout(()=>{
+      const wakeEl=document.getElementById('e-wake');
+      if(wakeEl&&entry.wake_time){
+        const wt=String(entry.wake_time).trim();
+        wakeEl.value=wt.length>=5?wt.slice(0,5):'';
+      }
+    },50);
     if(entry.had_headache){const grp=document.getElementById('e-headache-group');grp.querySelectorAll('.toggle-btn').forEach(b=>{const v=b.onclick.toString().includes("'yes'")?'yes':'no';if(v===entry.had_headache)b.classList.add(v==='yes'?'selected-yes':'selected-no');});document.getElementById('e-had-headache').value=entry.had_headache;}
   }
   openModal('modal-edit');
@@ -972,8 +1118,12 @@ function getEditChips(id){return[...document.querySelectorAll(`#${id} .chip.sele
 
 async function saveEdit(){
   const entry=editingEntry;
+  const editDate=document.getElementById('e-date')?.value;
   if(entry.type==='headache'){
-    entry.onset_time=document.getElementById('e-onset-time').value;
+    const ot=document.getElementById('e-onset-time').value;
+    if(editDate&&ot)entry.timestamp=new Date(`${editDate}T${ot}:00`).toISOString();
+    else if(editDate)entry.timestamp=new Date(`${editDate}T12:00:00`).toISOString();
+    entry.onset_time=ot;
     entry.pain_scale=Number(document.getElementById('e-pain-val').value)||0;
     entry.areas=getEditChips('e-chips-area');
     entry.pain_types=getEditChips('e-chips-type');
@@ -983,6 +1133,7 @@ async function saveEdit(){
     if(entry.drugs.length===0)entry.drugs=['none'];
     entry.drug_time=document.getElementById('e-drug-time').value||null;
   } else {
+    if(editDate)entry.timestamp=new Date(`${editDate}T22:00:00`).toISOString();
     entry.wake_time=document.getElementById('e-wake').value;
     entry.sleep_hours=Number(document.getElementById('e-sleep').value)||0;
     entry.caffeine=Number(document.getElementById('e-caffeine').value)||0;
@@ -1032,8 +1183,11 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 window.addEventListener('load',()=>{
   renderAccountList();
+  const today=new Date().toISOString().slice(0,10);
   const hhmm=new Date().toTimeString().slice(0,5);
+  document.getElementById('h-date').value=today;
   document.getElementById('h-onset-time').value=hhmm;
+  document.getElementById('n-date').value=today;
 });
 </script>
 </body>
