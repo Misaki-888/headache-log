@@ -872,6 +872,7 @@ async function submitHeadache(){
   const targetTs=new Date(`${hdate}T${ot}:00`).toISOString();
 
   const entry={id:Date.now(),type:'headache',user:currentUser,
+    date:hdate,
     timestamp:targetTs,
     recorded_at:new Date().toISOString(),
     onset_time:ot,pain_scale:Number(pv),areas:getChips('chips-area'),pain_types:getChips('chips-type'),
@@ -885,8 +886,12 @@ async function submitHeadache(){
   btn.disabled=false;btn.textContent='記録する';
   resetHeadacheForm();
 }
+// 端末のローカル日付 yyyy-MM-dd（toISOStringはUTCなので朝9時前に前日になってしまう）
+function localDateStr(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+// 記録の「対象日付」（GASが返すdate優先。なければtimestampからローカル日付）
+function logDate(log){return log.date||(log.timestamp?localDateStr(new Date(log.timestamp)):'');}
 function resetHeadacheForm(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=localDateStr();
   document.getElementById('h-date').value=today;
   document.getElementById('h-onset-time').value='';document.getElementById('pain-val').value='';
   document.querySelectorAll('#scale-pain .scale-btn').forEach(b=>b.classList.remove('selected'));
@@ -916,6 +921,7 @@ async function submitNight(){
   const targetTs=new Date(`${ndate}T22:00:00`).toISOString();
 
   const entry={id:Date.now(),type:'night',user:currentUser,
+    date:ndate,
     timestamp:targetTs,
     recorded_at:new Date().toISOString(),
     wake_time:wake,sleep_hours:Number(sleep),
@@ -931,7 +937,7 @@ async function submitNight(){
   resetNightForm();
 }
 function resetNightForm(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=localDateStr();
   document.getElementById('n-date').value=today;
   ['n-wake','n-sleep','n-caffeine','n-memo'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('n-had-headache').value='';
@@ -949,9 +955,9 @@ function renderCalendar(){
   // 日付ごとのデータをマップ
   const dataMap={};
   logs.forEach(log=>{
-    const d=new Date(log.timestamp);
-    if(d.getFullYear()!==calYear||d.getMonth()!==calMonth)return;
-    const key=d.getDate();
+    const[ly,lm,ld]=logDate(log).split('-').map(Number);
+    if(ly!==calYear||lm-1!==calMonth)return;
+    const key=ld;
     if(!dataMap[key])dataMap[key]={headache:false,night:false,entries:[]};
     if(log.type==='headache')dataMap[key].headache=true;
     if(log.type==='night')dataMap[key].night=true;
@@ -1050,7 +1056,7 @@ function openDayModal(day,data){
 
 function openNewEntry(type,day){
   const ts=new Date(calYear,calMonth,day,type==='night'?22:12,0,0).toISOString();
-  const entry={id:Date.now(),type,user:currentUser,timestamp:ts,
+  const entry={id:Date.now(),type,user:currentUser,date:localDateStr(new Date(calYear,calMonth,day)),timestamp:ts,
     ...(type==='headache'?{onset_time:'',pain_scale:0,areas:[],pain_types:[],aura:null,symptoms:[],drugs:['none'],drug_time:null}:
     {wake_time:'',sleep_hours:0,caffeine:0,had_headache:null,memo:''}),weather:null};
   openEditModal(entry,true);
@@ -1061,15 +1067,15 @@ function openNewEntry(type,day){
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function openEditModal(entry,isNew=false){
   editingEntry=entry;
-  const dt=new Date(entry.timestamp);
-  const dateStr=`${dt.getMonth()+1}月${dt.getDate()}日`;
+  const[,em,ed]=logDate(entry).split('-').map(Number);
+  const dateStr=`${em}月${ed}日`;
   document.getElementById('modal-edit-title').textContent=
     (isNew?'新規 · ':'')+dateStr+' '+(entry.type==='headache'?'🤕 頭痛発症時':'🌙 夜の記録');
 
   const body=document.getElementById('modal-edit-body');
 
   if(entry.type==='headache'){
-    const entryDateH=entry.timestamp?entry.timestamp.slice(0,10):'';
+    const entryDateH=logDate(entry);
     body.innerHTML=`
       <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date"></div>
       <div class="field"><label class="field-label">発症時刻</label><input type="time" id="e-onset-time"></div>
@@ -1092,12 +1098,12 @@ function openEditModal(entry,isNew=false){
     // 全時刻・日付フィールドをJSで設定（Safari対応）
     setTimeout(()=>{
       document.getElementById('e-date').value=entryDateH;
-      const ot=String(entry.onset_time||'').trim();
-      if(ot)document.getElementById('e-onset-time').value=ot.length>=5?ot.slice(0,5):ot;
-      const dt=String(entry.drug_time||'').trim();
-      if(dt)document.getElementById('e-drug-time').value=dt.length>=5?dt.slice(0,5):dt;
+      const ot=formatTime(entry.onset_time);
+      if(ot)document.getElementById('e-onset-time').value=ot;
+      const dt=formatTime(entry.drug_time);
+      if(dt)document.getElementById('e-drug-time').value=dt;
       document.getElementById('e-pain-val').value=entry.pain_scale||'';
-    },50);
+    },200);
     // スケール
     const sw=document.getElementById('e-scale-pain');
     for(let i=1;i<=10;i++){const b=document.createElement('button');b.className='scale-btn'+(Number(entry.pain_scale)===i?' selected':'');b.textContent=i;b.onclick=()=>{sw.querySelectorAll('.scale-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('e-pain-val').value=i;};sw.appendChild(b);}
@@ -1109,7 +1115,7 @@ function openEditModal(entry,isNew=false){
     // 前兆
     if(entry.aura){const grp=document.getElementById('e-aura-group');grp.querySelectorAll('.toggle-btn').forEach(b=>{const v=b.onclick.toString().includes("'yes'")?'yes':'no';if(v===entry.aura)b.classList.add(v==='yes'?'selected-yes':'selected-no');});document.getElementById('e-aura').value=entry.aura;}
   } else {
-    const entryDate=entry.timestamp?entry.timestamp.slice(0,10):'';
+    const entryDate=logDate(entry);
     body.innerHTML=`
       <div class="field"><label class="field-label">対象日付</label><input type="date" id="e-date"></div>
       <div class="input-row">
@@ -1128,15 +1134,35 @@ function openEditModal(entry,isNew=false){
     // 全フィールドをJSで設定（Safari対応）
     setTimeout(()=>{
       document.getElementById('e-date').value=entryDate;
-      const wt=String(entry.wake_time||'').trim();
-      if(wt)document.getElementById('e-wake').value=wt.length>=5?wt.slice(0,5):wt;
+      const wt=formatTime(entry.wake_time);
+      if(wt)document.getElementById('e-wake').value=wt;
       document.getElementById('e-sleep').value=entry.sleep_hours??'';
       document.getElementById('e-caffeine').value=entry.caffeine??0;
       document.getElementById('e-memo').value=entry.memo||'';
-    },50);
+    },200);
     if(entry.had_headache){const grp=document.getElementById('e-headache-group');grp.querySelectorAll('.toggle-btn').forEach(b=>{const v=b.onclick.toString().includes("'yes'")?'yes':'no';if(v===entry.had_headache)b.classList.add(v==='yes'?'selected-yes':'selected-no');});document.getElementById('e-had-headache').value=entry.had_headache;}
   }
   openModal('modal-edit');
+}
+
+// 時刻文字列を HH:MM 形式に正規化
+function formatTime(val){
+  if(!val&&val!==0)return '';
+  const s=String(val).trim();
+  if(!s)return '';
+  // "07:00" "7:00:00" → "07:00"（先頭がHH:MMの場合のみ。"1899-12-29T…"のような日付文字列は対象外）
+  const hm=s.match(/^(\d{1,2}):(\d{2})/);
+  if(hm)return `${hm[1].padStart(2,'0')}:${hm[2]}`;
+  // 数値の場合（Sheetsが数値で返すことがある）
+  // Sheetsの時刻数値は1日=1なので時間に変換
+  const n=Number(s);
+  if(!isNaN(n)&&n>0&&n<1){
+    const totalMin=Math.round(n*24*60);
+    const h=Math.floor(totalMin/60);
+    const m=totalMin%60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  }
+  return s.length>=5?s.slice(0,5):s;
 }
 
 function buildEditChips(id,items,selected){
@@ -1155,6 +1181,7 @@ async function saveEdit(){
   const editDate=document.getElementById('e-date')?.value;
   if(entry.type==='headache'){
     const ot=document.getElementById('e-onset-time').value;
+    if(editDate)entry.date=editDate;
     if(editDate&&ot)entry.timestamp=new Date(`${editDate}T${ot}:00`).toISOString();
     else if(editDate)entry.timestamp=new Date(`${editDate}T12:00:00`).toISOString();
     entry.onset_time=ot;
@@ -1167,7 +1194,7 @@ async function saveEdit(){
     if(entry.drugs.length===0)entry.drugs=['none'];
     entry.drug_time=document.getElementById('e-drug-time').value||null;
   } else {
-    if(editDate)entry.timestamp=new Date(`${editDate}T22:00:00`).toISOString();
+    if(editDate){entry.date=editDate;entry.timestamp=new Date(`${editDate}T22:00:00`).toISOString();}
     entry.wake_time=document.getElementById('e-wake').value;
     entry.sleep_hours=Number(document.getElementById('e-sleep').value)||0;
     entry.caffeine=Number(document.getElementById('e-caffeine').value)||0;
@@ -1217,7 +1244,7 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 window.addEventListener('load',()=>{
   renderAccountList();
-  const today=new Date().toISOString().slice(0,10);
+  const today=localDateStr();
   const hhmm=new Date().toTimeString().slice(0,5);
   document.getElementById('h-date').value=today;
   document.getElementById('h-onset-time').value=hhmm;
